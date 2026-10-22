@@ -1,0 +1,126 @@
+10/22 working state of audiovista
+#include "raylib.h"
+#include <stdio.h>
+#include "kissfft-master/kiss_fft.h"
+#include <math.h>
+#define SCREENWIDTH   1500
+#define SCREENHEIGHT  800
+
+
+#define nfft 512
+#define inverse 0
+
+void drawSongQueue();
+void drawLine();
+void AudioProcesser(void*, unsigned int);
+
+float audiobuffer[nfft];
+volatile unsigned int writepos = 0;
+
+int main() {
+
+	int xspacing = SCREENWIDTH / 20;
+	int yspacing = SCREENHEIGHT / 10;
+	float rec_width = (float) SCREENWIDTH / (nfft / 2);
+
+
+	kiss_fft_cfg config = kiss_fft_alloc(nfft, inverse, 0, 0);
+	kiss_fft_cpx in[nfft], out[nfft];
+
+	int red_index = 50;
+	int grn_index = 100;
+	int ble_index = 150;
+
+	SetTargetFPS(60);
+
+	InitWindow(SCREENWIDTH, SCREENHEIGHT, "AudioVista");
+	SetTraceLogLevel(LOG_NONE);
+	InitAudioDevice();
+
+	Music music = LoadMusicStream("Scarlet Fire.mp3");
+
+	PlayMusicStream(music);
+
+	AttachAudioStreamProcessor(music.stream, AudioProcesser);
+
+	while (!WindowShouldClose()) {
+
+		UpdateMusicStream(music);
+
+		
+	for (int i = 0; i < nfft; i++){
+		float w = 0.5f * (1.0f - cosf(2.0f * PI * i / (nfft - 1))); // Hann Window
+		in[i].r = audiobuffer[i] * w;
+		in[i].i = 0;
+	}
+
+
+	kiss_fft(config, in, out);
+
+		if (red_index > 255) {
+			red_index = 50;
+		}
+		if (grn_index > 255) {
+			grn_index = 100;
+		}
+		if (ble_index > 255) {
+			ble_index = 150;
+		}
+
+		BeginDrawing();
+		ClearBackground(BLACK);
+
+		drawSongQueue();
+
+		for (int i = 0; i < nfft/2; i++) {
+
+			float magnitude = sqrtf(out[i].r * out[i].r + out[i].i * out[i].i);
+			float height = magnitude * 4.7;
+			Color rec_color = {red_index, grn_index, ble_index, 255};
+			printf("Value %d: %f\n", i, magnitude);
+			DrawRectangle(i * rec_width, 0, rec_width,  height, rec_color);
+
+
+		}
+
+		red_index++;
+		grn_index++;
+		ble_index++;
+		EndDrawing();
+	}
+
+	UnloadMusicStream(music);
+	
+	kiss_fft_free(config);
+	CloseAudioDevice();
+	CloseWindow();
+
+	return 0;
+
+}
+
+
+void drawSongQueue() {
+
+	int screencenter = SCREENWIDTH / 2;
+	int queuexoffset = SCREENWIDTH / 4;
+	int queueyoffset = SCREENHEIGHT / 20;
+	Color my_grey = { 255, 255, 255, 145 };
+	DrawRectangle(screencenter - (queuexoffset / 2), SCREENHEIGHT - queueyoffset, queuexoffset, queueyoffset, my_grey );
+	DrawText("Scarlet Fire", screencenter - (queuexoffset / 4),  SCREENHEIGHT - (queueyoffset / 2), 20, WHITE);
+
+}
+void AudioProcesser(void* stream, unsigned int frame) {
+
+		float* audio = (float *)stream;
+		unsigned int limit = (frame < nfft) ? frame : nfft;
+		for (unsigned int i = 0; i < frame; i++) {
+
+			if (i < limit) {
+				audiobuffer[i] = audio[i];
+			}
+			else {
+				audiobuffer[i] = 0.0;
+			}
+		}
+}
